@@ -64,6 +64,9 @@ class SinglePicoAgent:
                 self.control_active = True
                 if self.verbose:
                     print("Control activated!")
+                    print(
+                        f"reference: {pos}, {rot_quat} {current_target_pos} {current_target_rot}"
+                    )
             else:
                 # 停用控制
                 self.control_active = False
@@ -73,7 +76,9 @@ class SinglePicoAgent:
         if not self.control_active:
             # 未激活状态：持续更新手柄参考位置，不更新目标参考位置
             self._update_reference(pos, rot_quat)
-            return None
+            return current_target_pos, spt.Rotation.from_quat(
+                current_target_rot
+            ).as_euler("xyz", degrees=False)
 
         return self._compute_target_pose(pos, rot_quat)
 
@@ -88,8 +93,8 @@ class SinglePicoAgent:
         """持续更新手柄参考位姿（未激活时）"""
         self.reference_source_pos = pos.copy()
         self.reference_source_rot = spt.Rotation.from_quat(rot_quat)
-        print(f"xyz: {self.reference_source_pos}")
-        print(f"RPY: {self.reference_source_rot.as_euler('xyz', degrees=False)}")
+        # print(f"xyz: {self.reference_source_pos}")
+        # print(f"RPY: {self.reference_source_rot.as_euler('xyz', degrees=False)}")
 
     def _update_target(
         self,
@@ -134,7 +139,7 @@ class SinglePicoAgent:
 
         # print(f"Target position: {target_rot.as_euler('xyz', degrees=False)}")
 
-        return target_pos, target_rot.as_quat()
+        return target_pos, target_rot.as_euler("xyz", degrees=False)
 
     def get_control_status(self) -> bool:
         """获取控制状态"""
