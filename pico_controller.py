@@ -1,6 +1,7 @@
-# from wl_robot_python_sdk.teleoperate.pico_agent import SinglePicoAgent
+from wl_robot_python_sdk.teleoperate.pico_agent import SinglePicoAgent
 import time
-from pico_agent import SinglePicoAgent
+
+# from pico_agent import SinglePicoAgent
 import enet
 import numpy as np
 import threading
@@ -80,6 +81,10 @@ class PicoController:
 
         if data is None:
             return left_xyz, left_euler
+
+        if data["right_click_a"]:
+            print("Right click detected")
+
         return self.left_agent.act(
             data["right_hand"][:3],
             data["right_hand"][3:7],
@@ -140,6 +145,9 @@ class PicoControllerV2:
         # Add frequency tracking
         self.data_count = 0
         self.last_print_time = time.time()
+        # Add process timing tracking
+        self.process_times = []
+        self.total_process_time = 0.0
 
     def run(self):
         """
@@ -171,7 +179,11 @@ class PicoControllerV2:
         )
 
     def process(self, data):
+        start_time = time.time()
+
         pose_state = self.manager.get_pose_state()
+        if pose_state is None:
+            return
         right_cmd = self.act(pose_state, data)
 
         pose_cmd = self.pose_cmd
@@ -193,12 +205,16 @@ class PicoControllerV2:
         # pose_cmd.cmd[1].position_x = 0.385504860877991    # 左夹爪末端中心坐标x
         # pose_cmd.cmd[1].position_y = -0.22568735480308533    # 左夹爪末端中心坐标y
         # pose_cmd.cmd[1].position_z = -0.3093690574169159    # 左夹爪末端中心坐标z
-        pose_cmd.cmd[1].roll = 0.0  # 右夹爪旋转方向roll
-        pose_cmd.cmd[1].pitch = 0.0  # 右夹爪旋转方向pitch
-        pose_cmd.cmd[1].yaw = 0.0  # 右夹爪旋转方向yaw
+        pose_cmd.cmd[1].roll = right_cmd[1][0]  # 右夹爪旋转方向roll
+        pose_cmd.cmd[1].pitch = right_cmd[1][1]  # 右夹爪旋转方向pitch
+        pose_cmd.cmd[1].yaw = right_cmd[1][2]  # 右夹爪旋转方向yaw
 
         # # 发送位姿控制指令(高层控制，用于控制夹爪末端中心位置的运动)
         self.manager.high_level_control(pose_cmd)
+
+        end_time = time.time()
+        process_time = end_time - start_time
+        self.total_process_time += process_time
 
     def _run(self):
         host = enet.Host(enet.Address(b"0.0.0.0", 2233), 32, 2, 0, 0)
@@ -220,11 +236,18 @@ class PicoControllerV2:
                 if current_time - self.last_print_time >= 2.0:
                     elapsed = current_time - self.last_print_time
                     frequency = self.data_count / elapsed
+                    avg_process_time = (
+                        (self.total_process_time / self.data_count * 1000)
+                        if self.data_count > 0
+                        else 0
+                    )
                     print(
-                        f"Data reception frequency: {frequency:.2f} Hz ({self.data_count} packets in {elapsed:.1f}s)"
+                        f"Data reception frequency: {frequency:.2f} Hz ({self.data_count} packets in {elapsed:.1f}s), "
+                        f"Avg process time: {avg_process_time:.2f} ms"
                     )
                     self.data_count = 0
                     self.last_print_time = current_time
+                    self.total_process_time = 0.0
 
                 if self.time == 0:
                     self.time = time_val
