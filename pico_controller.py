@@ -187,7 +187,7 @@ class PicoControllerV2:
 
         pose_cmd = self.pose_cmd
 
-        pose_cmd.cmd[0].opening_state = 1  # 打开左夹爪
+        pose_cmd.cmd[0].opening_state = 1.0  # 打开左夹爪
         pose_cmd.cmd[0].force = 0.0  # 设置左夹爪要施加的力
         pose_cmd.cmd[0].position_x = 0.3865504860877991  # 左夹爪末端中心坐标x
         pose_cmd.cmd[0].position_y = 0.22568735480308533  # 左夹爪末端中心坐标y
@@ -196,7 +196,7 @@ class PicoControllerV2:
         pose_cmd.cmd[0].pitch = 0.0  # 左夹爪旋转方向pitch
         pose_cmd.cmd[0].yaw = 0.0  # 左夹爪旋转方向yaw
 
-        pose_cmd.cmd[1].opening_state = 1  # 打开右夹爪
+        pose_cmd.cmd[1].opening_state = 1.0  # 打开右夹爪
         pose_cmd.cmd[1].force = 0.0  # 设置右夹爪要施加的力
         pose_cmd.cmd[1].position_x = right_cmd[0][0]  # 右夹爪末端中心坐标x
         pose_cmd.cmd[1].position_y = right_cmd[0][1]  # 右夹爪末端中心坐标y
