@@ -1,7 +1,6 @@
-from wl_robot_python_sdk.teleoperate.pico_agent import SinglePicoAgent
+# from wl_robot_python_sdk.teleoperate.pico_agent import SinglePicoAgent
 import time
-
-# from pico_agent import SinglePicoAgent
+from pico_agent import SinglePicoAgent
 import enet
 import numpy as np
 import threading
@@ -223,6 +222,7 @@ class PicoControllerV2:
 
         while self.running:
             event = host.service(1000)
+            # print(f"ENet event type: {event.type}")
             if event.type == enet.EVENT_TYPE_CONNECT:
                 print(f"Client connected from {event.peer.address}.")
                 print(f"  -> Peer round trip time: {event.peer.roundTripTime}")
@@ -242,8 +242,7 @@ class PicoControllerV2:
                         else 0
                     )
                     print(
-                        f"Data reception frequency: {frequency:.2f} Hz ({self.data_count} packets in {elapsed:.1f}s), "
-                        f"Avg process time: {avg_process_time:.2f} ms"
+                        f"Data reception frequency: {frequency:.2f} Hz, Avg process time: {avg_process_time:.2f} ms"
                     )
                     self.data_count = 0
                     self.last_print_time = current_time
@@ -264,9 +263,67 @@ class PicoControllerV2:
                 print(f"  -> Peer round trip time: {event.peer.roundTripTime}")
 
 
-if __name__ == "__main__":
-    controller = PicoController(verbose=True)
-    thread = controller.run()
+def testv2():
+    """
+    Test function for PicoControllerV2
+    """
 
-    # sleep 1 min
-    time.sleep(300)
+    class CMD:
+        def __init__(self):
+            self.opening_state = 0
+            self.force = 0.0
+            self.position_x = 0.0
+            self.position_y = 0.0
+            self.position_z = 0.0
+            self.roll = 0.0
+            self.pitch = 0.0
+            self.yaw = 0.0
+
+    class PoseCmd:
+        def __init__(self):
+            # Simulate the command structure
+            self.cmd = [CMD(), CMD()]
+
+    class PoseState:
+        def __init__(self):
+            self.state = [STATE(), STATE()]
+
+    class STATE:
+        def __init__(self):
+            self.position_x = 0.0
+            self.position_y = 0.0
+            self.position_z = 0.0
+            self.roll = 0.0
+            self.pitch = 0.0
+            self.yaw = 0.0
+
+    class PicoManager:
+        def __init__(self):
+            self.pose_state = PoseState()
+
+        def get_pose_state(self):
+            """
+            left_pose = pose_state.state[1]
+            left_xyz = [left_pose.position_x, left_pose.position_y, left_pose.position_z]
+            """
+            # Simulate getting pose state
+            return self.pose_state
+
+        def high_level_control(self, pose_cmd):
+            pose_cmd
+
+    manager = PicoManager()
+    pose_cmd = PoseCmd()
+
+    controller = PicoControllerV2(manager, pose_cmd, verbose=True)
+    controller.run()
+
+
+if __name__ == "__main__":
+    # controller = PicoController(verbose=True)
+    # thread = controller.run()
+
+    # # sleep 1 min
+    # time.sleep(300)
+
+    testv2()
