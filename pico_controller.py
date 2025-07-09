@@ -138,8 +138,10 @@ class PicoController:
 class PicoControllerV2:
     def __init__(self, manager, pose_cmd, verbose: bool = False):
         self.left_agent = SinglePicoAgent(verbose=verbose)
+        self.right_agent = SinglePicoAgent(verbose=verbose)
         self.manager = manager
         self.pose_cmd = pose_cmd
+
         self.time = 0
         # Add frequency tracking
         self.data_count = 0
@@ -162,19 +164,43 @@ class PicoControllerV2:
         self.running = False
 
     def act(self, pose_state, data):
-        left_pose = pose_state.state[1]
+        left_pose = pose_state.state[0]
         left_xyz = [left_pose.position_x, left_pose.position_y, left_pose.position_z]
         left_euler = [left_pose.roll, left_pose.pitch, left_pose.yaw]
         left_quat = spt.Rotation.from_euler("xyz", left_euler).as_quat()
 
+        right_pose = pose_state.state[1]
+        right_xyz = [
+            right_pose.position_x,
+            right_pose.position_y,
+            right_pose.position_z,
+        ]
+        right_euler = [right_pose.roll, right_pose.pitch, right_pose.yaw]
+        right_quat = spt.Rotation.from_euler("xyz", right_euler).as_quat()
+
         if data is None:
-            return left_xyz, left_euler
-        return self.left_agent.act(
+            return (left_xyz, left_euler), (right_xyz, right_euler), 0.0, 0.0
+        left_cmd = self.left_agent.act(
+            data["left_hand"][:3],
+            data["left_hand"][3:7],
+            data["left_click_x"],
+            left_xyz,
+            left_quat,
+        )
+
+        right_cmd = self.right_agent.act(
             data["right_hand"][:3],
             data["right_hand"][3:7],
             data["right_click_a"],
-            left_xyz,
-            left_quat,
+            right_xyz,
+            right_quat,
+        )
+
+        return (
+            left_cmd,
+            right_cmd,
+            float(data["left_hand"][7]),
+            float(data["right_hand"][7]),
         )
 
     def process(self, data):
@@ -183,27 +209,24 @@ class PicoControllerV2:
         pose_state = self.manager.get_pose_state()
         if pose_state is None:
             return
-        right_cmd = self.act(pose_state, data)
+        left_cmd, right_cmd, left_trigger, right_trigger = self.act(pose_state, data)
 
         pose_cmd = self.pose_cmd
 
-        pose_cmd.cmd[0].opening_state = 1.0  # 打开左夹爪
+        pose_cmd.cmd[0].opening_state = left_trigger  # 打开左夹爪
         pose_cmd.cmd[0].force = 0.0  # 设置左夹爪要施加的力
-        pose_cmd.cmd[0].position_x = 0.3865504860877991  # 左夹爪末端中心坐标x
-        pose_cmd.cmd[0].position_y = 0.22568735480308533  # 左夹爪末端中心坐标y
-        pose_cmd.cmd[0].position_z = -0.3093690574169159  # 左夹爪末端中心坐标z
-        pose_cmd.cmd[0].roll = 0.0  # 左夹爪旋转方向roll
-        pose_cmd.cmd[0].pitch = 0.0  # 左夹爪旋转方向pitch
-        pose_cmd.cmd[0].yaw = 0.0  # 左夹爪旋转方向yaw
+        pose_cmd.cmd[0].position_x = left_cmd[0][0]  # 左夹爪末端中心坐标x
+        pose_cmd.cmd[0].position_y = left_cmd[0][1]  # 左夹爪末端中心坐标y
+        pose_cmd.cmd[0].position_z = left_cmd[0][2]  # 左夹爪末端中心坐标z
+        pose_cmd.cmd[0].roll = left_cmd[1][0]  # 左夹爪旋转方向roll
+        pose_cmd.cmd[0].pitch = left_cmd[1][1]  # 左夹爪旋转方向pitch
+        pose_cmd.cmd[0].yaw = left_cmd[1][2]  # 左夹爪旋转方向yaw
 
-        pose_cmd.cmd[1].opening_state = 1.0  # 打开右夹爪
+        pose_cmd.cmd[1].opening_state = right_trigger  # 打开右夹爪
         pose_cmd.cmd[1].force = 0.0  # 设置右夹爪要施加的力
         pose_cmd.cmd[1].position_x = right_cmd[0][0]  # 右夹爪末端中心坐标x
         pose_cmd.cmd[1].position_y = right_cmd[0][1]  # 右夹爪末端中心坐标y
         pose_cmd.cmd[1].position_z = right_cmd[0][2]  # 右夹爪末端中心坐标z
-        # pose_cmd.cmd[1].position_x = 0.385504860877991    # 左夹爪末端中心坐标x
-        # pose_cmd.cmd[1].position_y = -0.22568735480308533    # 左夹爪末端中心坐标y
-        # pose_cmd.cmd[1].position_z = -0.3093690574169159    # 左夹爪末端中心坐标z
         pose_cmd.cmd[1].roll = right_cmd[1][0]  # 右夹爪旋转方向roll
         pose_cmd.cmd[1].pitch = right_cmd[1][1]  # 右夹爪旋转方向pitch
         pose_cmd.cmd[1].yaw = right_cmd[1][2]  # 右夹爪旋转方向yaw

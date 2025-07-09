@@ -12,7 +12,22 @@ def apply_transfer(mat: np.ndarray, xyz: np.ndarray) -> np.ndarray:
 
 class SinglePicoAgent:
 
-    PICO_U22 = np.array([[0, 0, -1, 0], [-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]])
+    PICO_U22 = np.array(
+        [
+            [0, 0, -1, 0],  ####################
+            [-1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 0, 1],
+        ]
+    )
+    PICO_U22_rot = np.array(
+        [
+            [0, 0, -1, 0],
+            [-1, 0, 0, 0],
+            [0, -1, 0, 0],  # ← Z轴反了（从 [0, 1, 0] 变为 [0, -1, 0]
+            [0, 0, 0, 1],
+        ]
+    )
 
     def __init__(self, translation_scaling_factor: float = 1.0, verbose: bool = False):
         self.control_active = False
@@ -130,7 +145,7 @@ class SinglePicoAgent:
             apply_transfer(self.PICO_U22, delta_pos) * self.translation_scaling_factor
         )
 
-        pico_to_target_rot = spt.Rotation.from_matrix(self.PICO_U22[:3, :3])
+        pico_to_target_rot = spt.Rotation.from_matrix(self.PICO_U22_rot[:3, :3])
         delta_rot_on_target = pico_to_target_rot * delta_rot * pico_to_target_rot.inv()
 
         # 计算目标位姿：参考位姿 + 相对变化
