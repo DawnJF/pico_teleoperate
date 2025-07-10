@@ -20,30 +20,14 @@ class SinglePicoAgent:
             [0, 0, 0, 1],
         ]
     )
-    PICO_U22_rot_r = np.array(
-        [
-            [0, 0, -1, 0],
-            [-1, 0, 0, 0],
-            [0, 1, 0, 0],  # ← Z轴反了（从 [0, 1, 0] 变为 [0, -1, 0]
-            [0, 0, 0, 1],
-        ]
-    )
-    PICO_U22_rot_l = np.array(
-        [
-            [0, 0, 1, 0],
-            [1, 0, 0, 0],
-            [0, -1, 0, 0],  # ← Z轴反了（从 [0, 1, 0] 变为 [0, -1, 0]
-            [0, 0, 0, 1],
-        ]
-    )
 
     def __init__(
-        self, rot_m, translation_scaling_factor: float = 1.0, verbose: bool = False
+        self, info, translation_scaling_factor: float = 1.5, verbose: bool = False
     ):
         self.control_active = False
         self.translation_scaling_factor = translation_scaling_factor
         self.verbose = verbose
-        self.rot_m = rot_m
+        self.info = info
 
         # 参考位姿 - 目标对象（机器人末端执行器）
         self.reference_target_rot = None
@@ -55,6 +39,7 @@ class SinglePicoAgent:
 
         # 上一次按钮状态，用于检测按钮按下事件
         self.prev_button_state = False
+        self.test_count = 0
 
     def act(
         self,
@@ -89,15 +74,15 @@ class SinglePicoAgent:
                 self._update_reference(pos, rot_rpy)
                 self._update_target(current_target_pos, current_target_rot)
                 self.control_active = True
-                print("Control activated!")
-                if self.verbose:
-                    print(
-                        f"reference: {pos}, {rot_rpy} {current_target_pos} {current_target_rot}"
-                    )
+                print("\nControl activated!")
+                print(
+                    f"reference: {pos}, {rot_rpy} {current_target_pos} {current_target_rot}"
+                )
             else:
                 # 停用控制
                 self.control_active = False
-                print("Control deactivated!")
+                print(f"reference: {current_target_pos} {current_target_rot}")
+                print("Control deactivated!\n")
 
         if not self.control_active:
             return current_target_pos, current_target_rot
@@ -149,8 +134,10 @@ class SinglePicoAgent:
             apply_transfer(self.PICO_U22, delta_pos) * self.translation_scaling_factor
         )
 
-        pico_to_target_rot = spt.Rotation.from_matrix(self.rot_m[:3, :3])
-        delta_rot_on_target = delta_rot[[2, 0, 1]]
+        delta_rot_on_target = delta_rot[[0, 2, 1]]
+        delta_rot_on_target = -delta_rot_on_target
+        if self.info == "l":
+            delta_rot_on_target[2] = -delta_rot_on_target[2]
 
         # 计算目标位姿：参考位姿 + 相对变化
         target_pos = self.reference_target_pos + delta_pos_on_target

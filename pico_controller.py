@@ -43,12 +43,9 @@ def parse_event_string(data: str) -> tuple[int, dict]:
 
 class PicoController:
     def __init__(self, manager, pose_cmd, verbose: bool = False):
-        self.left_agent = SinglePicoAgent(
-            SinglePicoAgent.PICO_U22_rot_l, verbose=verbose
-        )
-        self.right_agent = SinglePicoAgent(
-            SinglePicoAgent.PICO_U22_rot_r, verbose=verbose
-        )
+        self.left_agent = SinglePicoAgent("l", verbose=verbose)
+        self.right_agent = SinglePicoAgent("r", verbose=verbose)
+        self.verbose = verbose
         self.manager = manager
         self.pose_cmd = pose_cmd
 
@@ -122,6 +119,19 @@ class PicoController:
             right_xyz,
             right_euler,
         )
+
+        if self.verbose and self.data_count % 2 == 0:
+            print(f"left_xyz: {left_xyz}")
+            # print(f"ref: {self.left_agent.reference_source_pos}")
+            # print(f"ref: {self.left_agent.reference_target_pos}")
+            print(f"return left_cmd: {left_cmd}")
+
+            print()
+            print(f"data_right_rpy: {data_right_rpy}")
+            print(f"right_cmd: {right_cmd}")
+
+            rt = float(data["right_hand"][7])
+            print(f"right_trigger: {rt}")
 
         return (
             left_cmd,
