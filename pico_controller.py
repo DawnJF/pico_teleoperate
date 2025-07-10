@@ -3,8 +3,7 @@ import time
 from pico_agent import SinglePicoAgent
 import enet
 import numpy as np
-import threading
-import scipy.spatial.transform as spt
+from scipy.spatial.transform import Rotation
 
 
 def parse_event_string(data: str) -> tuple[int, dict]:
@@ -43,102 +42,13 @@ def parse_event_string(data: str) -> tuple[int, dict]:
 
 
 class PicoController:
-    def __init__(self, verbose: bool = False):
-        self.left_agent = SinglePicoAgent(verbose=verbose)
-        self.left_state = None
-        self.running = False
-        self.lock = threading.Lock()
-        self.time = 0
-        # Add frequency tracking
-        self.data_count = 0
-        self.last_print_time = time.time()
-
-    def run(self):
-        """
-        启动 ENet thread
-        """
-        self.running = True
-
-        thread = threading.Thread(target=self._run, daemon=True)
-        thread.start()
-
-        return thread
-
-    def stop(self):
-        """
-        停止 ENet thread
-        """
-        self.running = False
-
-    def act(self, pose_state):
-        left_pose = pose_state.state[1]
-        left_xyz = [left_pose.position_x, left_pose.position_y, left_pose.position_z]
-        left_euler = [left_pose.roll, left_pose.pitch, left_pose.yaw]
-        left_quat = spt.Rotation.from_euler("xyz", left_euler).as_quat()
-        with self.lock:
-            data = self.left_state
-
-        if data is None:
-            return left_xyz, left_euler
-
-        if data["right_click_a"]:
-            print("Right click detected")
-
-        return self.left_agent.act(
-            data["right_hand"][:3],
-            data["right_hand"][3:7],
-            data["right_click_a"],
-            left_xyz,
-            left_quat,
-        )
-
-    def _run(self):
-        host = enet.Host(enet.Address(b"0.0.0.0", 2233), 32, 2, 0, 0)
-
-        print("ENet server listening on port 2233...")
-
-        while self.running:
-            event = host.service(1000)
-            if event.type == enet.EVENT_TYPE_CONNECT:
-                print(f"Client connected from {event.peer.address}.")
-                print(f"  -> Peer round trip time: {event.peer.roundTripTime}")
-            elif event.type == enet.EVENT_TYPE_RECEIVE:
-                time_val, data = parse_event_string(event.packet.data.decode())
-
-                with self.lock:
-                    self.data_count += 1
-                    current_time = time.time()
-
-                    # Check if 2 seconds have passed since last print
-                    if current_time - self.last_print_time >= 2.0:
-                        elapsed = current_time - self.last_print_time
-                        frequency = self.data_count / elapsed
-                        print(
-                            f"Data reception frequency: {frequency:.2f} Hz ({self.data_count} packets in {elapsed:.1f}s)"
-                        )
-                        self.data_count = 0
-                        self.last_print_time = current_time
-
-                if self.time == 0:
-                    self.time = time_val
-                if time_val < self.time:
-                    print(f"Received old data: {time_val} < {self.time}, ignoring.")
-                    continue
-
-                with self.lock:
-                    self.left_state = data
-
-            elif event.type == enet.EVENT_TYPE_DISCONNECT:
-                print(f"Client disconnected.")
-                print(f"  -> Peer state: {event.peer.state}")
-                print(f"  -> Peer last receive time: {event.peer.lastReceiveTime}")
-                print(f"  -> Peer round trip time: {event.peer.roundTripTime}")
-
-
-class PicoControllerV2:
     def __init__(self, manager, pose_cmd, verbose: bool = False):
-        self.left_agent = SinglePicoAgent(verbose=verbose)
-        self.right_agent = SinglePicoAgent(verbose=verbose)
+        self.left_agent = SinglePicoAgent(
+            SinglePicoAgent.PICO_U22_rot_l, verbose=verbose
+        )
+        self.right_agent = SinglePicoAgent(
+            SinglePicoAgent.PICO_U22_rot_r, verbose=verbose
+        )
         self.manager = manager
         self.pose_cmd = pose_cmd
 
@@ -165,35 +75,52 @@ class PicoControllerV2:
 
     def act(self, pose_state, data):
         left_pose = pose_state.state[0]
-        left_xyz = [left_pose.position_x, left_pose.position_y, left_pose.position_z]
-        left_euler = [left_pose.roll, left_pose.pitch, left_pose.yaw]
-        left_quat = spt.Rotation.from_euler("xyz", left_euler).as_quat()
+        left_xyz = np.array(
+            [left_pose.position_x, left_pose.position_y, left_pose.position_z]
+        )
+        left_euler = np.array([left_pose.roll, left_pose.pitch, left_pose.yaw])
 
         right_pose = pose_state.state[1]
-        right_xyz = [
-            right_pose.position_x,
-            right_pose.position_y,
-            right_pose.position_z,
-        ]
-        right_euler = [right_pose.roll, right_pose.pitch, right_pose.yaw]
-        right_quat = spt.Rotation.from_euler("xyz", right_euler).as_quat()
+        right_xyz = np.array(
+            [
+                right_pose.position_x,
+                right_pose.position_y,
+                right_pose.position_z,
+            ]
+        )
+        right_euler = np.array([right_pose.roll, right_pose.pitch, right_pose.yaw])
 
         if data is None:
             return (left_xyz, left_euler), (right_xyz, right_euler), 0.0, 0.0
+
+        button_state = data["right_click_a"]
+        data_left_quat = data["left_hand"][3:7]
+        data_right_quat = data["right_hand"][3:7]
+        try:
+            data_left_rpy = Rotation.from_quat(data_left_quat).as_euler(
+                "ZYX", degrees=False
+            )
+            data_right_rpy = Rotation.from_quat(data_right_quat).as_euler(
+                "ZYX", degrees=False
+            )
+        except ValueError as e:
+            data_left_rpy = np.zeros(3)
+            data_right_rpy = np.zeros(3)
+
         left_cmd = self.left_agent.act(
             data["left_hand"][:3],
-            data["left_hand"][3:7],
-            data["left_click_x"],
+            data_left_rpy,
+            button_state,
             left_xyz,
-            left_quat,
+            left_euler,
         )
 
         right_cmd = self.right_agent.act(
             data["right_hand"][:3],
-            data["right_hand"][3:7],
-            data["right_click_a"],
+            data_right_rpy,
+            button_state,
             right_xyz,
-            right_quat,
+            right_euler,
         )
 
         return (
@@ -286,9 +213,9 @@ class PicoControllerV2:
                 print(f"  -> Peer round trip time: {event.peer.roundTripTime}")
 
 
-def testv2():
+def test():
     """
-    Test function for PicoControllerV2
+    Test function for PicoController
     """
 
     class CMD:
@@ -323,6 +250,7 @@ def testv2():
     class PicoManager:
         def __init__(self):
             self.pose_state = PoseState()
+            self.count = 0
 
         def get_pose_state(self):
             """
@@ -333,12 +261,16 @@ def testv2():
             return self.pose_state
 
         def high_level_control(self, pose_cmd):
-            pose_cmd
+            if self.count % 100 == 0:
+                print(
+                    f"high_level_control: {pose_cmd.cmd[0].position_x}, {pose_cmd.cmd[1].position_x}"
+                )
+            self.count += 1
 
     manager = PicoManager()
     pose_cmd = PoseCmd()
 
-    controller = PicoControllerV2(manager, pose_cmd, verbose=True)
+    controller = PicoController(manager, pose_cmd, verbose=True)
     controller.run()
 
 
@@ -349,4 +281,4 @@ if __name__ == "__main__":
     # # sleep 1 min
     # time.sleep(300)
 
-    testv2()
+    test()

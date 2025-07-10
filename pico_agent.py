@@ -20,19 +20,30 @@ class SinglePicoAgent:
             [0, 0, 0, 1],
         ]
     )
-    PICO_U22_rot = np.array(
+    PICO_U22_rot_r = np.array(
         [
             [0, 0, -1, 0],
             [-1, 0, 0, 0],
+            [0, 1, 0, 0],  # ← Z轴反了（从 [0, 1, 0] 变为 [0, -1, 0]
+            [0, 0, 0, 1],
+        ]
+    )
+    PICO_U22_rot_l = np.array(
+        [
+            [0, 0, 1, 0],
+            [1, 0, 0, 0],
             [0, -1, 0, 0],  # ← Z轴反了（从 [0, 1, 0] 变为 [0, -1, 0]
             [0, 0, 0, 1],
         ]
     )
 
-    def __init__(self, translation_scaling_factor: float = 1.0, verbose: bool = False):
+    def __init__(
+        self, rot_m, translation_scaling_factor: float = 1.0, verbose: bool = False
+    ):
         self.control_active = False
         self.translation_scaling_factor = translation_scaling_factor
         self.verbose = verbose
+        self.rot_m = rot_m
 
         # 参考位姿 - 目标对象（机器人末端执行器）
         self.reference_target_rot = None
@@ -48,7 +59,7 @@ class SinglePicoAgent:
     def act(
         self,
         pos: np.ndarray,
-        rot_quat: np.ndarray,
+        rot_rpy: np.ndarray,
         button: bool,
         current_target_pos: np.ndarray,
         current_target_rot: np.ndarray,
@@ -58,15 +69,16 @@ class SinglePicoAgent:
 
         Args:
             pos: Pico手柄当前位置 [x, y, z]
-            rot_quat: Pico手柄当前旋转四元数 [x, y, z, w]
+            rot_rpy: Pico手柄当前旋转 [roll, pitch, yaw]
             button: 激活按钮状态 (True/False)
             current_target_pos: 当前目标对象位置（激活时需要）
-            current_target_rot: 当前目标对象旋转四元数（激活时需要）
+            current_target_rot: 当前目标对象旋转
 
         Returns:
-            None: 未激活时
-            (target_pos, target_rot): 激活时的目标位置和旋转四元数
+            current_target_pos, current_target_rot: 未激活时返回当前目标位置和旋转
+            target_pos, target_rot: 激活时的目标位置和旋转
         """
+
         # 检测按钮按下事件（从False到True的转换）
         button_pressed = button and not self.prev_button_state
         self.prev_button_state = button
@@ -74,40 +86,37 @@ class SinglePicoAgent:
         if button_pressed:
             if not self.control_active:
                 # 激活控制：记录当前的参考位姿
-                self._update_reference(pos, rot_quat)
+                self._update_reference(pos, rot_rpy)
                 self._update_target(current_target_pos, current_target_rot)
                 self.control_active = True
+                print("Control activated!")
                 if self.verbose:
-                    print("Control activated!")
                     print(
-                        f"reference: {pos}, {rot_quat} {current_target_pos} {current_target_rot}"
+                        f"reference: {pos}, {rot_rpy} {current_target_pos} {current_target_rot}"
                     )
             else:
                 # 停用控制
                 self.control_active = False
-                if self.verbose:
-                    print("Control deactivated!")
+                print("Control deactivated!")
 
         if not self.control_active:
-            # 未激活状态：持续更新手柄参考位置，不更新目标参考位置
-            self._update_reference(pos, rot_quat)
-            return current_target_pos, spt.Rotation.from_quat(
-                current_target_rot
-            ).as_euler("xyz", degrees=False)
+            return current_target_pos, current_target_rot
 
-        return self._compute_target_pose(pos, rot_quat)
+        return self._compute_target_pose(pos, rot_rpy)
 
     def _update_reference(
         self,
         pos: np.ndarray,
-        rot_quat: np.ndarray,
+        rot_rpy: np.ndarray,
     ):
         # skip 0
-        if np.all(rot_quat == 0):
+        if np.all(pos == 0):
+            self.reference_source_pos = None
+            self.reference_source_rot = None
             return
         """持续更新手柄参考位姿（未激活时）"""
         self.reference_source_pos = pos.copy()
-        self.reference_source_rot = spt.Rotation.from_quat(rot_quat)
+        self.reference_source_rot = rot_rpy.copy()
         # print(f"xyz: {self.reference_source_pos}")
         # print(f"RPY: {self.reference_source_rot.as_euler('xyz', degrees=False)}")
 
@@ -118,43 +127,38 @@ class SinglePicoAgent:
     ):
         # 记录目标对象的参考位姿（手柄参考位姿已经在持续更新）
         self.reference_target_pos = target_pos.copy()
-        self.reference_target_rot = spt.Rotation.from_quat(target_rot)
+        self.reference_target_rot = target_rot.copy()
 
     def _compute_target_pose(
-        self, pos: np.ndarray, rot_quat: np.ndarray
+        self, pos: np.ndarray, rot_rpy: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
         """计算目标位姿"""
 
         # 确保参考位姿已经设置
-        if (
-            self.reference_source_pos is None
-            or self.reference_source_rot is None
-            or self.reference_target_pos is None
-            or self.reference_target_rot is None
-        ):
-            raise ValueError("Reference poses not set. Cannot compute target pose.")
+        if self.reference_source_pos is None or self.reference_source_rot is None:
+            print("Reference poses not set. Cannot compute target pose.")
+            return self.reference_target_pos, self.reference_target_rot
 
         # 计算手柄相对于参考位置的变化
         delta_pos = pos - self.reference_source_pos
         # print("Delta position:", delta_pos)
 
-        current_source_rot = spt.Rotation.from_quat(rot_quat)
-        delta_rot = self.reference_source_rot.inv() * current_source_rot
+        delta_rot = rot_rpy - self.reference_source_rot
 
         delta_pos_on_target = (
             apply_transfer(self.PICO_U22, delta_pos) * self.translation_scaling_factor
         )
 
-        pico_to_target_rot = spt.Rotation.from_matrix(self.PICO_U22_rot[:3, :3])
-        delta_rot_on_target = pico_to_target_rot * delta_rot * pico_to_target_rot.inv()
+        pico_to_target_rot = spt.Rotation.from_matrix(self.rot_m[:3, :3])
+        delta_rot_on_target = delta_rot[[2, 0, 1]]
 
         # 计算目标位姿：参考位姿 + 相对变化
         target_pos = self.reference_target_pos + delta_pos_on_target
-        target_rot = self.reference_target_rot * delta_rot_on_target
+        target_rot = self.reference_target_rot + delta_rot_on_target
 
         # print(f"Target position: {target_rot.as_euler('xyz', degrees=False)}")
 
-        return target_pos, target_rot.as_euler("xyz", degrees=False)
+        return target_pos, target_rot
 
     def get_control_status(self) -> bool:
         """获取控制状态"""
