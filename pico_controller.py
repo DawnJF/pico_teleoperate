@@ -4,6 +4,7 @@ from pico_agent import SinglePicoAgent
 import enet
 import numpy as np
 from scipy.spatial.transform import Rotation
+import pyautogui
 
 
 def parse_event_string(data: str) -> tuple[int, dict]:
@@ -56,6 +57,9 @@ class PicoController:
         # Add process timing tracking
         self.process_times = []
         self.total_process_time = 0.0
+
+        self.last_button_x = False
+        self.last_button_y = False
 
     def run(self):
         """
@@ -120,18 +124,17 @@ class PicoController:
             right_euler,
         )
 
-        if self.verbose and self.data_count % 2 == 0:
-            print(f"left_xyz: {left_xyz}")
+        if self.verbose and self.data_count % 50 == 0:
+            # print(f"left_xyz: {left_xyz}")
             # print(f"ref: {self.left_agent.reference_source_pos}")
             # print(f"ref: {self.left_agent.reference_target_pos}")
-            print(f"return left_cmd: {left_cmd}")
+            # print(f"return left_cmd: {left_cmd}")
 
             print()
             print(f"data_right_rpy: {data_right_rpy}")
             print(f"right_cmd: {right_cmd}")
-
-            rt = float(data["right_hand"][7])
-            print(f"right_trigger: {rt}")
+            print(f"data_left_rpy: {data_left_rpy}")
+            print(f"left_cmd: {left_cmd}")
 
         return (
             left_cmd,
@@ -139,6 +142,21 @@ class PicoController:
             float(data["left_hand"][7]),
             float(data["right_hand"][7]),
         )
+
+    def process_xy(self, data):
+        button_x = data["left_click_x"]
+        button_y = data["left_click_y"]
+        if button_x and not self.last_button_x:
+            # 按下 X 键
+            print("X button pressed, trigger b key")
+            pyautogui.press("b")
+
+        if button_y and not self.last_button_y:
+            # 按下 Y 键
+            print("Y button pressed, trigger e key")
+            pyautogui.press("e")
+        self.last_button_x = button_x
+        self.last_button_y = button_y
 
     def process(self, data):
         start_time = time.time()
@@ -214,6 +232,7 @@ class PicoController:
                     print(f"Received old data: {time_val} < {self.time}, ignoring.")
                     continue
 
+                self.process_xy(data)
                 self.process(data)
 
             elif event.type == enet.EVENT_TYPE_DISCONNECT:

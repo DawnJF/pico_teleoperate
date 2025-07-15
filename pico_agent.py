@@ -139,6 +139,11 @@ class SinglePicoAgent:
         if self.info == "l":
             delta_rot_on_target[2] = -delta_rot_on_target[2]
 
+        if self.verbose:
+            print()
+            print(f"Delta position on target: {delta_pos_on_target}")
+            print(f"Delta rotation on target: {delta_rot_on_target}")
+
         # 计算目标位姿：参考位姿 + 相对变化
         target_pos = self.reference_target_pos + delta_pos_on_target
         target_rot = self.reference_target_rot + delta_rot_on_target
