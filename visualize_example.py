@@ -34,6 +34,9 @@ def main():
             with viewer.lock():
                 viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = int(d.time % 2)
 
+                formatted = " ".join(f"{x:.3f}" for x in d.qpos)
+                print(f"qpos: {formatted}")
+
             # Pick up changes to the physics state, apply perturbations, update options from GUI.
             viewer.sync()
 
